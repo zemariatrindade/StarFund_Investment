@@ -3,19 +3,18 @@ import pandas as pd
 import sys
 
 
-# Function that builds a dataframe based on the csv files of each asset in the folder
+# Function that gives you a dataframe based on the csv files of each asset
 
 def get_df(symbol,path_to_folder):
     
-    # I'll drop the last column stock splits as it only contains null values and it's not relevant to this assignment
     # Also, the stock information is contained into seperate files. We need to import and concatenate the info
         
         df1=pd.read_csv("{}/{}_1.csv".format(path_to_folder,symbol),\
-                        usecols=[0,1,2,3,4,5,6]
+                        usecols=[0,4]
                        )
         
         df2=pd.read_csv("{}/{}_2.csv".format(path_to_folder,symbol),\
-                        usecols=[0,1,2,3,4,5,6]
+                        usecols=[0,4]
                        )
         
         frames = [df2,df1]
@@ -24,27 +23,11 @@ def get_df(symbol,path_to_folder):
         # The time zone is not relevant to our assignment, and therefore we will only need format = "%Y-%m-%d"
         df["Date"] = df["Date"].apply(lambda row: row[:10])
         
-        #Building a datetime index
+        #Building a datetime index dataframe
         df = df.set_index('Date')
         df.index = pd.to_datetime(df.index,format = "%Y-%m-%d")
         
-        return df 
-
-
-# Function that builds a pandas series with a cumulative performance of a given stock
-
-def daily_performance(df):
-    
-    #Creating a new column called Performance that is the grow rate of the close price between 2 business consecutive days
-    
-    df["Performance on close"] = ((df["Close"]/df["Close"].shift(1))-1)*100
-    df[df.index == "2022-12-01"] = 0
-    
-    # Getting the cumulative of performance
-    df["Cumulative Performance on close"] = df["Performance on close"].cumsum()
-    
-    return df["Cumulative Performance on close"]
-
+        return df    
 
 
 # For reading the users.csv
@@ -70,17 +53,20 @@ def read_users(path_to_folder):
 
 # Function that adds the amount_refund column with map, and returns the final df
 
-
 def calculate_amount_to_refund(users):
 
-    mapping = table["Fund Cumulative Performance on close"]
-    users["cumulated performance on open"]=users["investment_open_date"].map(mapping)
+    mapping = fund["Close"]
+
+    users["Close_Price_Open"]=users["investment_open_date"].map(mapping)
     
-    users["cumulated performance on close"]=users["investment_close_date"].map(mapping)
+    users["Close_Price_Close"]=users["investment_close_date"].map(mapping)
     
-    users["amount_refund"] = (users["amount_invested"] * \
-                              (1 + users["cumulated performance on close"]/100\
-                               - users["cumulated performance on open"]/100))#.round(2) 
+    
+    
+    # (investment_amount / close_price_on_opening_date) * close_price_on_refund_date
+    
+    users["amount_refund"] = (users["amount_invested"] / users["Close_Price_Open"]\
+                              * users["Close_Price_Close"])
 
 
     # Slicing our df for the relevant columns
@@ -103,22 +89,13 @@ if __name__ == '__main__':
     google = get_df('GOOGL',path_to_folder)
     amazon = get_df('AMZN',path_to_folder)
     
-    
-    table = pd.DataFrame()
-    table["facebook"] = daily_performance(facebook)
-    table["netflix"] = daily_performance(netflix)
-    table["apple"] = daily_performance(apple)
-    table["tesla"] = daily_performance(tesla)
-    table["google"] = daily_performance(google)
-    table["amazon"] = daily_performance(amazon)
-    
-    # New column for the fund which is a combination of the previous ones
-    table["Fund Cumulative Performance on close"] = table["facebook"]*0.15 + table["netflix"]*0.1\
-                                + table["apple"]*0.25 + table["tesla"]*0.15\
-                                + table["google"]*0.20 + table["amazon"]*0.15
-    
-    table = table[["Fund Cumulative Performance on close"]]
-    
+    # Creating the fund made out of the weighted average of each stock
+
+    fund = pd.DataFrame()
+    fund.index = facebook.index
+    fund["Close"] = facebook["Close"]*0.15 + netflix["Close"]*0.1 + apple["Close"]*0.25 + \
+                    tesla["Close"]*0.15 + google["Close"]*0.2 + amazon["Close"]*0.15
+        
     
     # Uploading the users file into a pandas df
     users = read_users(path_to_folder)
@@ -132,4 +109,3 @@ if __name__ == '__main__':
     # Saving the new df created as a csv file into the path_to_folder provided
     
     output.to_csv(path_to_folder + "/users_refund.csv", index=False)
-    
